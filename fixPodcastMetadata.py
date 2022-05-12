@@ -51,7 +51,7 @@ def main(db_path):
             in get_downloaded_episodes(db_path):
 
         src_path = urllib.parse.unquote(path[len('file://'):])
-        print(f"Checking: {src_path}")
+        print(f"Updating: {src_path}")
         if os.path.exists(src_path):
             try:
                 mp3 = MP3(src_path, ID3=EasyID3)
