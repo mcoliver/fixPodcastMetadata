@@ -15,6 +15,6 @@ Original garmin reports [here](https://forums.garmin.com/sports-fitness/running-
 You can run it from the terminal before you run Garmin Express.  Or setup a cron job so that it runs in the background every so often (say once a day) to keep things up to date.
 
 ```bash
-python3 -c "$(wget -q -O - https://raw.githubusercontent.com/mcoliver/fixPodcastMetadata/main/fixPodcastMetadata.py)"
+python3 -c "$(curl -s https://raw.githubusercontent.com/mcoliver/fixPodcastMetadata/main/fixPodcastMetadata.py)"
 
 ```
