@@ -60,6 +60,7 @@ def main(db_path):
                 mp3.tags['artist'] = author
                 mp3.tags['album'] = podcast
                 mp3.tags['title'] = title
+                mp3.tags['genre'] = "Podcast"
                 mp3.save()
             except HeaderNotFoundError:
                 print(f"Corrupted file: {podcast} - {title}")
