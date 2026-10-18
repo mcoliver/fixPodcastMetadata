@@ -22,7 +22,20 @@ import os
 import urllib.parse
 import sqlite3
 
+# Newer versions of Apple Podcasts store the downloaded file location
+# in ZMTMEDIAENCLOSURE.ZLOCALURL instead of ZMTEPISODE.ZASSETURL
 SQL = """
+SELECT p.ZAUTHOR, p.ZTITLE, e.ZTITLE, m.ZLOCALURL, e.ZPUBDATE
+from ZMTEPISODE e
+join ZMTPODCAST p
+    on e.ZPODCASTUUID = p.ZUUID
+join ZMTMEDIAENCLOSURE m
+    on e.ZCURRENTMEDIAENCLOSURE = m.Z_PK
+where m.ZLOCALURL NOTNULL;
+"""
+
+# Older versions of Apple Podcasts
+LEGACY_SQL = """
 SELECT p.ZAUTHOR, p.ZTITLE, e.ZTITLE, e.ZASSETURL, e.ZPUBDATE
 from ZMTEPISODE e
 join ZMTPODCAST p
@@ -42,7 +55,11 @@ def check_imports():
 
 def get_downloaded_episodes(db_path):
     '''Run SQL Query'''
-    return sqlite3.connect(db_path).execute(SQL).fetchall()
+    conn = sqlite3.connect(db_path)
+    has_enclosures = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ZMTMEDIAENCLOSURE'"
+    ).fetchone()
+    return conn.execute(SQL if has_enclosures else LEGACY_SQL).fetchall()
 
 
 def main(db_path):
