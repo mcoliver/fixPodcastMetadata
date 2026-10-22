@@ -14,6 +14,8 @@ So if your watch is plugged in, the script now copies your downloaded episodes o
 
 Garmin Express has to be closed while this happens, because it blocks other apps from talking to the watch.  If it's open, the script will offer to quit it for you.  When the script says it's done, unplug the watch and your podcasts will be there.
 
+[Garmin Forums report](https://forums.garmin.com/apps-software/mac-windows-software/f/garmin-express/446687/garmin-express-7-29-3-mac-can-t-sync-podcasts-storage-limit-reached-or-error-sending-files-workaround-inside)
+
 # Requirements
 * Python 3 ([https://www.python.org/downloads/](https://www.python.org/downloads/))
 
