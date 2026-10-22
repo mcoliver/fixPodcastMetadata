@@ -18,7 +18,10 @@
 #
 #  https://mcoliver.com
 
+import importlib
 import os
+import subprocess
+import sys
 import urllib.parse
 import sqlite3
 
@@ -45,12 +48,19 @@ where ZASSETURL NOTNULL;
 
 
 def check_imports():
-    ''' Prompts for password to install dependencies, if needed '''
+    ''' Installs dependencies for the running interpreter, if needed '''
+    # Install into a private folder using the same python that is running
+    # this script. Avoids mismatched pip/python (e.g. Homebrew vs system)
+    # and PEP 668 "externally-managed-environment" errors.
+    lib_dir = os.path.expanduser(
+        "~/Library/Application Support/fixPodcastMetadata/site-packages")
+    sys.path.insert(0, lib_dir)
     try:
         import mutagen
     except ImportError:
-        os.system(
-            """osascript -e 'do shell script "/usr/bin/pip3 install mutagen" with administrator privileges'""")
+        subprocess.check_call([sys.executable, "-m", "pip", "install",
+                               "--quiet", "--target", lib_dir, "mutagen"])
+        importlib.invalidate_caches()
 
 
 def get_downloaded_episodes(db_path):
