@@ -74,8 +74,10 @@ OP_GET_STORAGE_IDS = 0x1004
 OP_GET_STORAGE_INFO = 0x1005
 OP_GET_OBJECT_HANDLES = 0x1007
 OP_GET_OBJECT_INFO = 0x1008
+OP_DELETE_OBJECT = 0x100B
 OP_SEND_OBJECT_INFO = 0x100C
 OP_SEND_OBJECT = 0x100D
+OP_GET_PARTIAL_OBJECT = 0x101B
 RESPONSE_OK = 0x2001
 RESPONSE_SESSION_ALREADY_OPEN = 0x201E
 FORMAT_FOLDER = 0x3001
@@ -311,16 +313,16 @@ class GarminWatch:
         return struct.unpack('<HHHQQ', data[:22])[4]
 
     def list_folder(self, parent):
-        '''Returns {lowercase name: (handle, format)} for a folder's contents'''
+        '''Returns {lowercase name: (handle, format, size)} for a folder'''
         if parent not in self.folders:
             _, data = self.request(OP_GET_OBJECT_HANDLES,
                                    [self.storage_id, 0, parent])
             contents = {}
             for handle in self.unpack_array(data):
                 _, info = self.request(OP_GET_OBJECT_INFO, [handle])
-                object_format = struct.unpack('<H', info[4:6])[0]
+                object_format, _, size = struct.unpack('<HHI', info[4:12])
                 name = self.unpack_string(info, 52)
-                contents[name.lower()] = (handle, object_format)
+                contents[name.lower()] = (handle, object_format, size)
             self.folders[parent] = contents
         return self.folders[parent]
 
@@ -343,12 +345,31 @@ class GarminWatch:
             OP_SEND_OBJECT_INFO, [self.storage_id, parent],
             data=self.object_info(name, parent, FORMAT_FOLDER))
         handle = response[2]
-        contents[name.lower()] = (handle, FORMAT_FOLDER)
+        contents[name.lower()] = (handle, FORMAT_FOLDER, 0)
         self.folders[handle] = {}
         return handle
 
-    def has_file(self, parent, name):
-        return name.lower() in self.list_folder(parent)
+    def file_status(self, parent, file_path):
+        '''Returns "missing", "current" or "stale" for the watch's copy'''
+        entry = self.list_folder(parent).get(
+            os.path.basename(file_path).lower())
+        if entry is None or entry[1] == FORMAT_FOLDER:
+            return "missing"
+        handle, _, size = entry
+        if size != os.path.getsize(file_path):
+            return "stale"
+        # Retagging can keep the same file size, so compare the tags too
+        local_tags = id3_tag_bytes(file_path)
+        if local_tags:
+            _, watch_tags = self.request(OP_GET_PARTIAL_OBJECT,
+                                         [handle, 0, len(local_tags)])
+            if watch_tags != local_tags:
+                return "stale"
+        return "current"
+
+    def delete_file(self, parent, name):
+        handle = self.list_folder(parent).pop(name.lower())[0]
+        self.request(OP_DELETE_OBJECT, [handle, 0])
 
     def send_file(self, parent, file_path):
         name = os.path.basename(file_path)
@@ -358,7 +379,21 @@ class GarminWatch:
             data=self.object_info(name, parent, FORMAT_MP3, size))
         self.request(OP_SEND_OBJECT, file_path=file_path,
                      timeout=SEND_TIMEOUT_MS)
-        self.list_folder(parent)[name.lower()] = (response[2], FORMAT_MP3)
+        self.list_folder(parent)[name.lower()] = (response[2], FORMAT_MP3,
+                                                  size)
+
+
+def id3_tag_bytes(file_path):
+    '''Returns the raw ID3v2 tag at the start of an mp3, or b'' if none'''
+    with open(file_path, 'rb') as f:
+        header = f.read(10)
+        if len(header) < 10 or header[:3] != b'ID3':
+            return b''
+        size = 0
+        for byte in header[6:10]:  # syncsafe integer, 7 bits per byte
+            size = size << 7 | (byte & 0x7f)
+        footer = 10 if header[5] & 0x10 else 0
+        return header + f.read(size + footer)
 
 
 def folder_name(name):
@@ -419,9 +454,14 @@ def copy_to_watch(episodes):
             for podcast, title, src_path in episodes:
                 show = watch.folder(podcasts, folder_name(podcast))
                 episode = watch.folder(show, folder_name(title))
-                if watch.has_file(episode, os.path.basename(src_path)):
+                status = watch.file_status(episode, src_path)
+                if status == "current":
                     print(f"Already on watch: {podcast} - {title}")
                     continue
+                if status == "stale":
+                    # e.g. copied before its metadata was fixed
+                    print(f"Replacing outdated copy: {podcast} - {title}")
+                    watch.delete_file(episode, os.path.basename(src_path))
                 size = os.path.getsize(src_path)
                 if size > watch.free_space():
                     print(f"Not enough space on watch for: {podcast} - {title}")
